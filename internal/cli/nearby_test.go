@@ -73,8 +73,11 @@ func TestNearbyCLIResolvesOnceAndUsesProviderAreaEndpoints(t *testing.T) {
 			if locations != tc.locationRequests || areas != 1 || len(snapshot.Aircraft) != 1 || snapshot.Status != "visible" || snapshot.RadiusNM != 25 {
 				t.Fatalf("incorrect lookups or snapshot: locations=%d, areas=%d, %+v", locations, areas, snapshot)
 			}
-			if snapshot.Aircraft[0].GroundSpeed == nil || *snapshot.Aircraft[0].GroundSpeed != 0 || snapshot.Aircraft[0].DistanceNM != 0 {
-				t.Fatal("known zero speed or zero distance lost")
+			if snapshot.Aircraft[0].GroundSpeed == nil || *snapshot.Aircraft[0].GroundSpeed != 0 {
+				t.Fatalf("reported zero speed lost: %v", snapshot.Aircraft[0].GroundSpeed)
+			}
+			if distance := snapshot.Aircraft[0].DistanceNM; distance != 0 {
+				t.Fatalf("identical coordinates must have zero distance; got %.17g nm", distance)
 			}
 			if stderr.Len() != 0 {
 				t.Fatalf("unexpected stderr: %s", &stderr)
