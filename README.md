@@ -1,5 +1,7 @@
 # Aerolatch
 
+[![CI](https://github.com/loxley/aerolatch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/loxley/aerolatch/actions/workflows/ci.yml)
+
 A small Go CLI for tracking a live flight by passenger flight number, callsign,
 aircraft hex address, or registration. Uses
 free public APIs; live tracking requires no API key. Optional Swedavia airport
@@ -7,6 +9,24 @@ schedules and reported status use a free subscription key. This is an independen
 project, not an official Flightradar24 client.
 
 ![Aerolatch terminal dashboard showing live flight tracking](aerolatch-tui.png)
+
+## Download
+
+Download a prebuilt archive from [GitHub Releases](https://github.com/loxley/aerolatch/releases).
+Releases provide Linux, macOS (`darwin`), and Windows binaries for `amd64` (Intel/AMD)
+and `arm64` (including Apple Silicon). Extract the archive and put `aerolatch`
+(`aerolatch.exe` on Windows) in a directory on your `PATH`.
+
+Each release includes `checksums.txt` with SHA-256 hashes. To verify a downloaded
+archive on Linux, place it next to `checksums.txt` and run:
+
+```sh
+sha256sum --check --ignore-missing checksums.txt
+```
+
+On macOS, use `shasum -a 256 ARCHIVE`; on Windows, use
+`Get-FileHash ARCHIVE -Algorithm SHA256` in PowerShell, and compare the hash with
+the matching entry in `checksums.txt`.
 
 ## Build
 
@@ -582,3 +602,21 @@ trend gaps, events, cancellation, and CLI validation. `TestDashboardTerminalHelp
 is an opt-in process fixture for pseudo-terminal checks, enabled with
 `AEROLATCH_TUI_TEST=q|ctrlc|cancel|fatal|calculated` when the test binary is run in a PTY.
 Live smoke tests can be run separately using the usage commands above.
+
+### CI and releases
+
+GitHub Actions runs formatting, module verification, workflow linting, `go vet`,
+race tests with coverage, and a reachable-vulnerability scan. Tests and CLI smoke
+checks run on Linux, macOS, and Windows using the latest stable Go; a separate
+Linux job checks Go 1.22 compatibility without automatic toolchain upgrades.
+Every CI run also builds all six release archives without publishing and verifies
+their checksums. Coverage and snapshot packages are downloadable as workflow
+artifacts for seven days.
+
+CI runs on pull requests, pushes to `main`, a weekly schedule, and manually from
+the [Actions tab](https://github.com/loxley/aerolatch/actions/workflows/ci.yml).
+The stable **CI passed** check aggregates all required jobs and can be selected
+as a required status check in a branch protection rule or ruleset for `main`.
+Dependabot proposes weekly updates for Go dependencies and SHA-pinned Actions.
+
+See [release instructions and local packaging checks](docs/releases.md).
