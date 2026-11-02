@@ -55,6 +55,10 @@ jobs:
         run: go vet ./...
       - name: Race tests and coverage
         run: go test -race -count=1 -timeout=5m -coverprofile=coverage.out ./...
+      - name: Foreground terminal navigation and cancellation
+        run: |
+          go test -c -o "$RUNNER_TEMP/aerolatch-cli.test" ./internal/cli
+          python3 scripts/tui_smoke.py --binary "$RUNNER_TEMP/aerolatch-cli.test"
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

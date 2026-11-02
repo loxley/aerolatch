@@ -7,10 +7,12 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"aerolatch/internal/flight"
+	"aerolatch/internal/geo"
 )
 
 type Live struct {
@@ -45,6 +47,25 @@ func (l Live) Lookup(ctx context.Context, target flight.Target) ([]flight.Aircra
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", l.Name(), err)
 	}
+	endpoint := strings.TrimRight(l.BaseURL, "/") + "/v2/" + string(target.Kind) + "/" + url.PathEscape(target.Value)
+	return l.fetch(ctx, endpoint, target.Matches, 2<<20)
+}
+
+// LookupNearby uses each provider's supported area endpoint. ADSB.fi's v2
+// area endpoint is deprecated; v3 uses the same aircraft schema as v2 lookups.
+func (l Live) LookupNearby(ctx context.Context, lat, lon float64, radius int) ([]flight.Aircraft, error) {
+	if !geo.ValidCoordinates(&lat, &lon) || radius < 1 || radius > 250 {
+		return nil, fmt.Errorf("%s: valid coordinates and radius between 1 and 250 nm required", l.Name())
+	}
+	a, b := strconv.FormatFloat(lat, 'f', -1, 64), strconv.FormatFloat(lon, 'f', -1, 64)
+	path := "/v2/point/" + a + "/" + b + "/" + strconv.Itoa(radius)
+	if l.Name() == "ADSB.fi" {
+		path = "/v3/lat/" + a + "/lon/" + b + "/dist/" + strconv.Itoa(radius)
+	}
+	return l.fetch(ctx, strings.TrimRight(l.BaseURL, "/")+path, nil, 16<<20)
+}
+
+func (l Live) fetch(ctx context.Context, endpoint string, matches func(flight.Aircraft) bool, limit int64) ([]flight.Aircraft, error) {
 	var data struct {
 		Aircraft *[]struct {
 			Hex          string          `json:"hex"`
@@ -63,8 +84,7 @@ func (l Live) Lookup(ctx context.Context, target flight.Target) ([]flight.Aircra
 		Now     float64 `json:"now"`
 		Message string  `json:"msg"`
 	}
-	endpoint := strings.TrimRight(l.BaseURL, "/") + "/v2/" + string(target.Kind) + "/" + url.PathEscape(target.Value)
-	if err := getJSON(ctx, l.Client, endpoint, l.Name(), &data); err != nil {
+	if err := getJSONLimit(ctx, l.Client, endpoint, l.Name(), &data, limit); err != nil {
 		return nil, err
 	}
 	if data.Message != "" && data.Message != "No error" {
@@ -78,7 +98,7 @@ func (l Live) Lookup(ctx context.Context, target flight.Target) ([]flight.Aircra
 	for _, raw := range *data.Aircraft {
 		// Hex queries deliberately accept missing or changed callsigns, but never
 		// an aircraft with a different address. Each lookup has an exact key.
-		if !target.Matches(flight.Aircraft{Hex: raw.Hex, Callsign: raw.Callsign, Registration: raw.Registration}) {
+		if matches != nil && !matches(flight.Aircraft{Hex: raw.Hex, Callsign: raw.Callsign, Registration: raw.Registration}) {
 			continue
 		}
 		aircraft := flight.Aircraft{

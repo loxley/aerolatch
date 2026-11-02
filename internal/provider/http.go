@@ -43,6 +43,10 @@ func RetryAfter(err error) time.Duration {
 }
 
 func getJSON(ctx context.Context, client *http.Client, endpoint, service string, target any) error {
+	return getJSONLimit(ctx, client, endpoint, service, target, 2<<20)
+}
+
+func getJSONLimit(ctx context.Context, client *http.Client, endpoint, service string, target any, limit int64) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
@@ -57,14 +61,13 @@ func getJSON(ctx context.Context, client *http.Client, endpoint, service string,
 	if resp.StatusCode != http.StatusOK {
 		return &HTTPError{Service: service, StatusCode: resp.StatusCode, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
-	// A targeted lookup should be small. Bound responses, including malformed ones.
-	const limit = 2 << 20
+	// Area searches are larger than targeted lookups; both remain bounded.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return fmt.Errorf("%s: read response: %w", service, err)
 	}
-	if len(body) > limit {
-		return fmt.Errorf("%s: response exceeds 2 MiB", service)
+	if int64(len(body)) > limit {
+		return fmt.Errorf("%s: response exceeds %d MiB", service, limit>>20)
 	}
 	if err := json.Unmarshal(body, target); err != nil {
 		return fmt.Errorf("%s: invalid JSON response: %w", service, err)

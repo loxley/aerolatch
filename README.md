@@ -87,6 +87,10 @@ Alternatively, run directly with `go run . track D85373` or install with
 ./aerolatch departures ARN --date 2026-10-21
 ./aerolatch arrivals ARN --date 2026-10-21 --json
 ./aerolatch track D84487 --origin ARN --date 2026-10-21 --tui
+
+# Find nearby aircraft around a city or a precise coordinate reference point.
+./aerolatch nearby --city Stockholm --country SE --radius 25 --tui
+./aerolatch nearby --lat 59.33 --lon 18.07 --provider adsb.fi --once --json
 ```
 
 Flight numbers are case-insensitive; whitespace is ignored (quote input such as
@@ -112,6 +116,49 @@ aircraft. Airport-reported **LANDED/CANCELLED** is displayed separately from ADS
 positions and inferred arrival. Deleted records are not treated as cancellations.
 
 See [Swedavia setup, matching, dates, quotas and JSON fields](docs/swedavia.md).
+
+### Nearby aircraft
+
+Use `nearby` to list aircraft around a city or supplied coordinates, nearest first:
+
+```sh
+./aerolatch nearby --city Stockholm --country SE --tui
+./aerolatch nearby --city "Cambridge" --country GB --once
+./aerolatch nearby --place-id 2673730 --radius 50 --once
+./aerolatch nearby --lat 59.33 --lon 18.07 --radius 25 --provider adsb.fi --tui
+```
+
+City/postal-code searches use [Open-Meteo's GeoNames-based geocoding API](https://open-meteo.com/en/docs/geocoding-api).
+The lookup happens once at startup. Ambiguous searches show an interactive location
+picker; JSON and nonterminal commands instead list IDs to select with `--place-id`.
+No geocoding API key is needed for non-commercial use.
+
+The dashboard shows distance, compass bearing, altitude, speed, and position age.
+Use **↑↓ / j k** to select an aircraft, **Enter** to track it by hex, and **Esc** to
+return to a freshly polled nearby list. `q` or Ctrl+C quits from either screen.
+The selected hex stays selected as rows reorder; if it disappears, explicitly
+select another aircraft. Detail immediately retains the selected observation with
+its original timestamp and resolves a callsign-based reference route in the
+background. Last-known identity and reference data are labelled separately from
+current broadcasts; a reference route is not a confirmed dated flight. Once its
+destination is available, the shared tracker calculates distance, phase, rough
+touchdown estimates, and arrival evidence exactly as in normal flight tracking.
+With `SWEDAVIA_API_KEY` exported, selected flights involving a covered airport
+also use the existing Swedavia dated-flight matching and reported status/times.
+Airport checks run in the background and continue after ADS-B disappears. Use
+`--swedavia off` to opt out; the nearby list itself never queries flight boards.
+
+Defaults are a **25 nm radius** and **10-second polling**, configurable with
+`--radius` (integer 1–250 nm) and `--interval` (5s–24h). Plain output, `--once`,
+`--json`, `--timeout`, and both live providers are supported.
+
+Distances are horizontal distances from the selected **city reference point or
+supplied coordinates**, not a detected device position. A city point may be far
+from your actual location; proximity does not establish visibility or an overhead
+pass. Only fresh valid positions are listed. Retained results during feed errors
+are explicitly **NOT CURRENT** and cannot be selected for tracking.
+
+See [nearby search, navigation, freshness, and JSON fields](docs/nearby.md).
 
 ### Aircraft identity and lookup modes
 
@@ -577,6 +624,10 @@ packages so a historical/arrival-status provider can be added later.
 - [OurAirports](https://github.com/davidmegginson/ourairports-data): airport
   metadata for destination overrides; public-domain airport data. Downloads use
   the project's GitHub mirror and do not contain current flight status.
+- [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api), using
+  [GeoNames](https://www.geonames.org) location data: city/postal-code reference
+  points for nearby searches. The free hosted API is for non-commercial use;
+  see [Open-Meteo's terms](https://open-meteo.com/en/terms).
 - Map links open [OpenStreetMap](https://www.openstreetmap.org/copyright).
 - [Swedavia](https://www.swedavia.se): optional dated flight boards, operational
   assignments and reported airport statuses, subject to its API terms. Requires
@@ -601,6 +652,15 @@ API access. Dashboard tests cover model updates, responsive layouts, timestamps,
 trend gaps, events, cancellation, and CLI validation. `TestDashboardTerminalHelper`
 is an opt-in process fixture for pseudo-terminal checks, enabled with
 `AEROLATCH_TUI_TEST=q|ctrlc|cancel|fatal|calculated` when the test binary is run in a PTY.
+`TestNearbyTerminalHelper` uses `AEROLATCH_TUI_TEST=nearby|nearby-cancel` for
+nearby/detail/back navigation and cancellation checks in a PTY.
+`scripts/tui_smoke.py --binary PATH` runs the mocked `internal/cli` test binary in
+a controlling foreground terminal. CI uses it to check repeated navigation,
+reference enrichment, delayed HTTP requests, provider cooldowns, and prompt
+Esc/q/Ctrl+C handling without colour-query/input-reader conflicts.
+The same terminal checks cover SFT → ARN airport-reported arrival after ADS-B
+loss, shared board caching across selections, opt-out, and cancellation during
+an authenticated airport request. All airport tests use mocked data and dummy keys.
 Live smoke tests can be run separately using the usage commands above.
 
 ### CI and releases

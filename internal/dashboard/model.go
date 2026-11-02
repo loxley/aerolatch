@@ -35,11 +35,16 @@ type model struct {
 	lastFix                      time.Time
 	lastState, lastPhase         string
 	styles                       palette
+	canReturn, returnToNearby    bool
 }
 
 func newModel(initial flight.Snapshot, interval time.Duration, output io.Writer) model {
+	return newModelWithPalette(initial, interval, newPalette(lipgloss.NewRenderer(output)))
+}
+
+func newModelWithPalette(initial flight.Snapshot, interval time.Duration, styles palette) model {
 	return model{snapshot: initial, interval: interval, now: time.Now().UTC(),
-		width: 80, height: 24, liveDotOn: true, styles: newPalette(lipgloss.NewRenderer(output))}
+		width: 80, height: 24, liveDotOn: true, styles: styles}
 }
 
 func tick() tea.Cmd {
@@ -61,6 +66,10 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = !m.showHelp
 			m.bodyOffset = 0
 		case "esc":
+			if m.canReturn && !m.showHelp {
+				m.returnToNearby = true
+				return m, tea.Quit
+			}
 			m.showHelp = false
 			m.bodyOffset = 0
 		case "up", "k":
@@ -96,6 +105,10 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) accept(s flight.Snapshot) {
 	previous, hadPrevious := m.snapshot, m.received
 	m.snapshot, m.received, m.now = s, true, s.CheckedAt
+	if s.Inspection != nil {
+		// Metadata/request progress must not refresh or rewind feed/fix timestamps.
+		m.now = s.Inspection.UpdatedAt
+	}
 	if hadPrevious && previous.Source != s.Source {
 		m.resetTrends()
 		m.addEvent("Live feed changed to " + s.Source)
@@ -193,6 +206,11 @@ func (m model) state() string {
 		return "STALE"
 	}
 	switch m.snapshot.Status {
+	case "connecting":
+		if info := m.snapshot.Inspection; info != nil && info.WaitUntil != nil && info.WaitUntil.After(m.now) {
+			return "PROVIDER WAIT"
+		}
+		return "CONNECTING"
 	case "scheduled":
 		return "SCHEDULED"
 	case "waiting_for_schedule":

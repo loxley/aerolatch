@@ -29,6 +29,8 @@ const usage = `Usage:
   aerolatch track --registration REGISTRATION [options]
   aerolatch departures AIRPORT [--date YYYY-MM-DD] [--json]
   aerolatch arrivals AIRPORT [--date YYYY-MM-DD] [--json]
+  aerolatch nearby --city CITY [--country CODE] [--radius NM] [--tui]
+  aerolatch nearby --lat LAT --lon LON [--radius NM] [--once] [--json]
 
 Examples:
   aerolatch track D85373
@@ -43,6 +45,7 @@ Examples:
   aerolatch track --registration SE-RTG --provider adsb.fi --once
   aerolatch departures ARN --date 2026-10-21
   aerolatch track D84487 --origin ARN --date 2026-10-21 --tui
+  aerolatch nearby --city Stockholm --country SE --radius 25 --tui
 
 Free live data: adsbdb, ADSB.lol or ADSB.fi. Optional airport data: SWEDAVIA_API_KEY.
 Route mappings are reference data; codeshares and operational callsigns may differ.
@@ -58,6 +61,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return err
 	}
 	if args[0] != "track" {
+		if args[0] == "nearby" {
+			return nearbyCommand(ctx, args[1:], out, errOut)
+		}
 		if args[0] == "departures" || args[0] == "arrivals" {
 			return boardCommand(ctx, args, out, errOut)
 		}

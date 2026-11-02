@@ -4,11 +4,22 @@ import (
 	"context"
 	"time"
 
+	"aerolatch/internal/eta"
 	"aerolatch/internal/flight"
 )
 
 type ScheduleLookup interface {
 	Update(context.Context, time.Time, *flight.Aircraft) flight.ScheduleUpdate
+}
+
+// Airport status may arrive without a live aircraft response. It can withhold
+// an ETA, but it never creates or advances inferred landing/surface evidence.
+func applyAirportStatus(snapshot *flight.Snapshot, update flight.ScheduleUpdate) {
+	if r := update.Report; r != nil && (r.Match == "matched" || r.Stale) && r.Flight != nil {
+		if status, ok := map[string]string{"LAN": "landed", "CAN": "cancelled", "DEL": "removed"}[r.Flight.StatusCode]; ok {
+			snapshot.LandingEstimate = eta.Unavailable("airport reports the selected flight " + status + "; see the sourced airport status")
+		}
+	}
 }
 
 func waitingStatus(update flight.ScheduleUpdate) string {
