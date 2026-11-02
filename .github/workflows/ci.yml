@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: '23 7 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  # The suffix separates this reusable workflow from the Release caller.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-ci
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # In particular, the Go 1.22 compatibility job must not upgrade itself.
+  GOTOOLCHAIN: local
+
+jobs:
+  quality:
+    name: Formatting, vet, and race tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on these files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Verify dependencies
+        run: |
+          go mod download
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
+      - name: Validate GitHub workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      - name: Vet
+        run: go vet ./...
+      - name: Race tests and coverage
+        run: go test -race -count=1 -timeout=5m -coverprofile=coverage.out ./...
+      - name: Upload coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 7
+
+  test:
+    name: Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            go: stable
+          - os: macos-latest
+            go: stable
+          - os: windows-latest
+            go: stable
+          - os: ubuntu-latest
+            go: '1.22.x'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Test
+        run: go test -count=1 -timeout=5m ./...
+      - name: Build and smoke-test the CLI
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          binary=./aerolatch
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary=./aerolatch.exe
+          fi
+          go build -trimpath -o "$binary" .
+          "$binary" --help
+
+  vulnerabilities:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: Check reachable vulnerabilities
+        run: govulncheck ./...
+
+  snapshot:
+    name: Release packaging dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.19.0
+          install-only: true
+      - name: Validate release configuration
+        run: goreleaser check
+      - name: Build all release archives without publishing
+        run: goreleaser release --snapshot --clean --skip=publish
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum --check checksums.txt
+      - name: Upload snapshot packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  passed:
+    name: CI passed
+    if: ${{ always() }}
+    needs: [quality, test, vulnerabilities, snapshot]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every check to pass
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          TEST: ${{ needs.test.result }}
+          VULNERABILITIES: ${{ needs.vulnerabilities.result }}
+          SNAPSHOT: ${{ needs.snapshot.result }}
+        run: |
+          [[ "$QUALITY" == success && "$TEST" == success &&
+             "$VULNERABILITIES" == success && "$SNAPSHOT" == success ]]
