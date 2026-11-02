@@ -15,8 +15,10 @@ Only the publishing job has `contents: write`; it uses the built-in
 `GITHUB_TOKEN`, so no personal access token is required. Checkout credentials are
 not persisted. Actions are pinned to commit SHAs.
 
-The Go compiler for release binaries is the latest stable version. Go 1.22 is a
-source-compatibility check, not the compiler used to ship releases.
+The Go compiler for release binaries is the latest stable version. The minimum
+supported version is Go 1.24.0, declared in `go.mod`. The Linux minimum-version
+job reads that file and tests source compatibility with automatic toolchain
+upgrades disabled.
 
 ## Create a release
 

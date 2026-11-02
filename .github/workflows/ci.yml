@@ -22,7 +22,7 @@ defaults:
     shell: bash
 
 env:
-  # In particular, the Go 1.22 compatibility job must not upgrade itself.
+  # The minimum-version compatibility job must not upgrade itself.
   GOTOOLCHAIN: local
 
 jobs:
@@ -78,14 +78,15 @@ jobs:
           - os: windows-latest
             go: stable
           - os: ubuntu-latest
-            go: '1.22.x'
+            go: minimum
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go }}
+          go-version: ${{ matrix.go != 'minimum' && matrix.go || '' }}
+          go-version-file: ${{ matrix.go == 'minimum' && 'go.mod' || '' }}
       - name: Test
         run: go test -count=1 -timeout=5m ./...
       - name: Build and smoke-test the CLI
