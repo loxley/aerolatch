@@ -6,6 +6,8 @@ free public APIs; live tracking requires no API key. Optional Swedavia airport
 schedules and reported status use a free subscription key. This is an independent
 project, not an official Flightradar24 client.
 
+![Aerolatch terminal dashboard showing live flight tracking](aerolatch-tui.png)
+
 ## Build
 
 Requires Go 1.22 or newer. The dashboard uses Go 1.22-compatible versions of
