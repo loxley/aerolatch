@@ -10,6 +10,8 @@ project, not an official Flightradar24 client.
 
 ![Aerolatch terminal dashboard showing live flight tracking](aerolatch-tui.png)
 
+![Aerolatch nearby-aircraft dashboard showing aircraft sorted by distance](aerolatch-nearby-tui.png)
+
 ## Download
 
 Download a prebuilt archive from [GitHub Releases](https://github.com/loxley/aerolatch/releases).
