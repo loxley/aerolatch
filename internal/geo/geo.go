@@ -10,7 +10,11 @@ func ValidCoordinates(lat, lon *float64) bool {
 func DistanceNM(lat1, lon1, lat2, lon2 float64) float64 {
 	const radians = math.Pi / 180
 	p, q := lat1*radians, lat2*radians
-	h := math.Pow(math.Sin((q-p)/2), 2) + math.Cos(p)*math.Cos(q)*math.Pow(math.Sin((lon2-lon1)*radians/2), 2)
+	// Subtract coordinates before conversion. Subtracting two separately
+	// converted latitudes can fuse into a multiply-subtract on ARM64, leaving
+	// a rounding residual even when the original coordinates are identical.
+	dLat, dLon := (lat2-lat1)*radians, (lon2-lon1)*radians
+	h := math.Pow(math.Sin(dLat/2), 2) + math.Cos(p)*math.Cos(q)*math.Pow(math.Sin(dLon/2), 2)
 	return 3440.065 * 2 * math.Asin(math.Sqrt(min(1, max(0, h))))
 }
 

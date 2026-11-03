@@ -150,6 +150,11 @@ func (s *Swedavia) day(ctx context.Context, airport, direction, date string) (sw
 		entry.expires = now.Add(30 * time.Minute)
 	}
 	flights, err := s.fetch(ctx, airport, direction, date, now)
+	// A view change cancels its request; it must not poison the shared board
+	// cache for the next selected aircraft or turn cancellation into an outage.
+	if ctx.Err() != nil {
+		return swedaviaEntry{}, ctx.Err()
+	}
 	entry.flights, entry.err = flights, err
 	if err != nil {
 		var failure *HTTPError

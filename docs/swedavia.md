@@ -22,6 +22,13 @@ Use `--swedavia off` to opt out for a live-tracking invocation. Without a key,
 ordinary live tracking works as before. Flight-board commands and explicit dated
 tracking require a key.
 
+The selected-aircraft detail screen opened from `nearby --tui` also discovers
+coverage once its reference route resolves. It reuses this matching/refresh
+logic in an independent, cancellable background worker. Airport reports continue
+after ADS-B coverage loss and share a board cache across selections. The nearby
+list never fetches airport boards; `nearby --swedavia off --tui` opts out.
+See [nearby airport enrichment](nearby.md#swedavia-airport-information).
+
 ## Dates and boards
 
 `departures AIRPORT` and `arrivals AIRPORT` accept `--date`, `--json`, `--timeout`,

@@ -29,6 +29,7 @@ archives:
     files:
       - README.md
       - aerolatch-tui.png
+      - aerolatch-nearby-tui.png
       - docs/*.md
 
 checksum:

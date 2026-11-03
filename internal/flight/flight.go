@@ -115,4 +115,5 @@ type Snapshot struct {
 	Tracking        *TrackingInfo      `json:"tracking,omitempty"`
 	AirportReport   *AirportReport     `json:"airport_report,omitempty"`
 	RouteSource     string             `json:"route_source,omitempty"`
+	Inspection      *InspectionInfo    `json:"inspection,omitempty"`
 }

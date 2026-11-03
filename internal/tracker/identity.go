@@ -38,6 +38,12 @@ func (i identity) lookup() flight.Target {
 	return i.target
 }
 
+// A new destination must not inherit another airport's ground dwell. Keep the
+// physical hex lock, timestamps and an already-triggered next-leg guard intact.
+func (i *identity) resetDestinationEvidence() {
+	i.groundStart, i.lastGround, i.groundDwell = time.Time{}, time.Time{}, false
+}
+
 func recent(at *time.Time, now time.Time) bool {
 	return at != nil && now.Sub(*at) <= 90*time.Second && !at.After(now.Add(5*time.Second))
 }

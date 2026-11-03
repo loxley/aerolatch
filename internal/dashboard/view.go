@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -16,6 +18,9 @@ import (
 type palette struct{ border, title, accent, good, warn, bad, dim lipgloss.Style }
 
 func newPalette(r *lipgloss.Renderer) palette {
+	// AdaptiveColor otherwise performs synchronous OSC reads during Render.
+	// Bubble Tea owns terminal input: never compete with its keyboard reader.
+	r.SetHasDarkBackground(darkBackground(os.Getenv("COLORFGBG")))
 	style := func(light, dark string) lipgloss.Style {
 		return r.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: light, Dark: dark})
 	}
@@ -24,6 +29,20 @@ func newPalette(r *lipgloss.Renderer) palette {
 		accent: style("#007A80", "#63E6DF"), good: style("#087A36", "#80ED99").Bold(true),
 		warn: style("#996000", "#F5C76B"), bad: style("#B52540", "#FF728A").Bold(true),
 		dim: style("#59656D", "#94A7AD"),
+	}
+}
+
+func darkBackground(hint string) bool {
+	parts := strings.Split(hint, ";")
+	bg, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return true // Deterministic dark theme when no usable environment hint exists.
+	}
+	switch bg {
+	case 7, 10, 11, 14, 15:
+		return false
+	default:
+		return true
 	}
 }
 
@@ -72,6 +91,8 @@ func (m model) header(width int) string {
 	identity := clean(s.Query)
 	if s.Callsign != "" && s.Callsign != s.Query {
 		identity += " → " + clean(s.Callsign)
+	} else if s.Callsign == "" && s.Inspection != nil && s.Inspection.LastKnownCallsign != "" {
+		identity += " → " + clean(s.Inspection.LastKnownCallsign) + " (last known)"
 	}
 	badge := m.badge()
 	left := m.styles.title.Render(identity) + " · " + clean(s.Source)
@@ -93,8 +114,27 @@ func (m model) header(width int) string {
 		airline += " · " + clean(aircraftID(*a))
 	}
 	route := "Destination unavailable; use --destination to enable arrival estimates"
+	if m.canReturn {
+		route = "Physical aircraft tracking · route/destination not resolved"
+	}
+	if info := s.Inspection; info != nil {
+		switch info.RouteStatus {
+		case "resolving":
+			route = "Resolving reference route for " + clean(info.RouteCallsign) + "…"
+		case "available":
+			route = "Reference resolved · updating tracking destination…"
+		case "unavailable":
+			route = "Reference route unavailable"
+			if info.LastKnownCallsign == "" {
+				route += " · no callsign broadcast"
+			}
+		}
+	}
 	if s.Route != nil {
 		label := "Reference: "
+		if s.Inspection != nil && (s.Callsign == "" || m.state() != "LIVE" || s.Inspection.RouteStatus != "available") {
+			label = "Last-known reference: "
+		}
 		if s.RouteSource == "Swedavia" {
 			label = "Dated route: "
 		}
@@ -240,6 +280,7 @@ func (m model) arrivalPanel(width int) string {
 		}
 		if a.Status == "airborne" {
 			evidence = "Airborne report; no arrival inferred"
+			surface = "Surface: not observed (airborne)"
 		}
 	}
 	if s.Tracking != nil && s.Tracking.FlightState == "subsequent_departure" {
@@ -315,6 +356,20 @@ func (m model) eventPanel(width, count int) string {
 
 func (m model) help(width int) string {
 	lines := []string{"q / Ctrl+C  Quit and cancel tracking", "↑ / k        Older events", "↓ / j        Newer events", "PgUp/PgDn    Scroll panels in short/narrow terminals", "Home / g     Return to the top and newest events", "? / Esc      Toggle / close this help", "", "Colors: green = live/surface evidence; amber = stale or possible landing.", "Possible landing: airborne-to-surface transition, or approach + coverage loss.", "Likely landed: distinct fresh surface reports with a 3-second debounce.", "Charts show distinct fixes, not evenly spaced time samples; · marks gaps.", "Screen updates do not make API requests. Trend/event history is session-only.", "", "CURRENT DETAILS"}
+	if m.canReturn {
+		lines = append([]string{"Esc          Return to nearby list (close help first)", "Aircraft selected by hex. Callsign routes are reference data, not dated legs."}, lines...)
+	}
+	if info := m.snapshot.Inspection; info != nil {
+		lines = append(lines, "INSPECTION / IDENTITY AND REQUESTS", "Last-known callsign: "+clean(info.LastKnownCallsign),
+			"Callsign observed: "+age(info.CallsignObservedAt, m.now), "Reference lookup: "+info.RouteStatus+" / "+clean(info.RouteCallsign))
+		if info.RouteError != "" {
+			lines = append(lines, "Reference lookup: "+clean(info.RouteError))
+		}
+		lines = append(lines, "Distance/ETA/arrival use the selected reference destination, as in normal tracking.")
+		if info.SwedaviaStatus != "" {
+			lines = append(lines, "Swedavia: "+human(info.SwedaviaStatus))
+		}
+	}
 	if a := m.snapshot.Arrival; a != nil {
 		lines = append(lines, "Arrival: "+clean(a.Reason))
 		if a.Approach != nil {
@@ -439,6 +494,8 @@ func (m model) View() string {
 	}
 	if m.snapshot.AirportReport != nil {
 		source = "Swedavia https://swedavia.se + " + source
+	} else if info := m.snapshot.Inspection; info != nil && info.SwedaviaStatus != "" {
+		source = "Swedavia: " + human(info.SwedaviaStatus) + " + " + source
 	}
 	fetched := "waiting"
 	if m.received {
@@ -448,10 +505,27 @@ func (m model) View() string {
 	if m.snapshot.RetryAt != nil {
 		footer = source + " | retry " + m.snapshot.RetryAt.UTC().Format("15:04:05Z")
 	}
+	if info := m.snapshot.Inspection; info != nil && info.RequestState != "" {
+		if info.WaitUntil != nil && info.WaitUntil.After(m.now) {
+			footer = fmt.Sprintf("%s | Waiting for provider: %s | Esc nearby · q quit", source, info.WaitUntil.Sub(m.now).Round(time.Second))
+		} else {
+			started := info.RequestStartedAt
+			if info.WaitUntil != nil {
+				started = info.WaitUntil
+			}
+			footer = source + " | Fetching aircraft…"
+			if started != nil {
+				footer += " " + max(0, m.now.Sub(*started)).Round(time.Second).String()
+			}
+		}
+	}
 	if m.finished {
 		footer = source + " | TRACKING STOPPED · q to exit"
 	}
 	keys := "q quit · ↑↓ events · PgUp/PgDn panels · ? help"
+	if m.canReturn {
+		keys = "Esc nearby · " + keys
+	}
 	if len(lines) > available {
 		keys += fmt.Sprintf(" [%d–%d/%d]", offset+1, min(len(lines), offset+available), len(lines))
 	}
