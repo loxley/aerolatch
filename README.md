@@ -32,7 +32,7 @@ the matching entry in `checksums.txt`.
 
 ## Build
 
-Requires Go 1.24.0 or newer. The dashboard uses Bubble Tea and Lip Gloss;
+Requires Go 1.24.2 or newer. The dashboard uses Bubble Tea and Lip Gloss;
 Go downloads the pinned dependencies on the first build.
 
 ```sh
@@ -670,7 +670,7 @@ Live smoke tests can be run separately using the usage commands above.
 GitHub Actions runs formatting, module verification, workflow linting, `go vet`,
 race tests with coverage, and a reachable-vulnerability scan. Tests and CLI smoke
 checks run on Linux, macOS, and Windows using the latest stable Go; a separate
-Linux job reads the minimum version from `go.mod` (currently Go 1.24.0) and checks
+Linux job reads the minimum version from `go.mod` (currently Go 1.24.2) and checks
 compatibility without automatic toolchain upgrades.
 Every CI run also builds all six release archives without publishing and verifies
 their checksums. Coverage and snapshot packages are downloadable as workflow

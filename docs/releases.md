@@ -16,7 +16,7 @@ Only the publishing job has `contents: write`; it uses the built-in
 not persisted. Actions are pinned to commit SHAs.
 
 The Go compiler for release binaries is the latest stable version. The minimum
-supported version is Go 1.24.0, declared in `go.mod`. The Linux minimum-version
+supported version is Go 1.24.2, declared in `go.mod`. The Linux minimum-version
 job reads that file and tests source compatibility with automatic toolchain
 upgrades disabled.
 
